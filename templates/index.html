@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Solar Passport — decision platform for Brunei building solar and utility/C&I project bankability." />
+  <title>Solar Passport — Better energy-investment decisions</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Solar Passport home">
+      <span class="brand-mark" aria-hidden="true">SP</span>
+      <span class="brand-word">Solar Passport</span>
+    </a>
+    <nav class="top-nav" aria-label="Primary">
+      <button class="nav-link active" data-view="building">Building Passport</button>
+      <button class="nav-link" data-view="project">Project Passport</button>
+      <button class="nav-link" data-modal="methodology">Methodology</button>
+    </nav>
+    <button class="btn btn-ink" id="print-passport">Export Passport</button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">BRUNEI SOLAR DECISION PLATFORM</p>
+        <h1>Clarity before<br><span>capital.</span></h1>
+        <p class="hero-lede">Determine whether a solar investment is technically suitable, financially attractive, financeable and implementation-ready.</p>
+        <div class="hero-actions">
+          <button class="btn btn-solar" data-switch="building">Assess a building</button>
+          <button class="btn btn-outline" data-switch="project">Test a PPA tariff</button>
+        </div>
+      </div>
+      <div class="hero-panel">
+        <div class="hero-panel-label">The decision comes first</div>
+        <div class="decision-stack">
+          <div><span>01</span><strong>Understand</strong><small>Load, site, tariff, project structure</small></div>
+          <div><span>02</span><strong>Model</strong><small>Generation, bills, IRR, DSCR, NPV</small></div>
+          <div><span>03</span><strong>Decide</strong><small>Proceed, optimise, resize, hold</small></div>
+        </div>
+        <div class="hero-quote">“Does this project actually make sense?”</div>
+      </div>
+    </section>
+
+    <section class="workspace" id="workspace">
+      <!-- BUILDING -->
+      <div class="passport-view active" id="view-building">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PRODUCT A</p>
+            <h2>Building Solar Passport</h2>
+            <p>Size solar around the building’s load and economics, rather than filling the roof by default.</p>
+          </div>
+          <div class="status-chip neutral" id="building-status-top">Awaiting assessment</div>
+        </div>
+
+        <div class="app-grid">
+          <aside class="input-panel">
+            <form id="building-form" novalidate>
+              <div class="form-section open">
+                <button type="button" class="form-section-title">01 · Site & load <span>−</span></button>
+                <div class="form-section-body">
+                  <label>Building / site name<input name="site_name" value="ABC Workshop" /></label>
+                  <div class="field-grid two">
+                    <label>Monthly electricity bill (BND)<input type="number" name="monthly_bill" value="500" min="0" step="10" /></label>
+                    <label>Annual consumption (kWh)<input type="number" name="annual_kwh" value="0" min="0" step="100" /><small>Leave 0 to estimate from bill.</small></label>
+                  </div>
+                  <div class="field-grid two">
+                    <label>Tariff
+                      <select name="tariff_type" id="building-tariff">
+                        <option value="tariff_a">Residential Tariff A</option>
+                        <option value="flat" selected>Custom / commercial flat rate</option>
+                      </select>
+                    </label>
+                    <label>Flat import rate (BND/kWh)<input type="number" name="flat_rate" value="0.0678" min="0" step="any" /></label>
+                  </div>
+                  <div class="field-grid two">
+                    <label>Estimated daytime load (%)<input type="number" name="daytime_share_pct" value="70" min="0" max="100" step="5" /></label>
+                    <label>Export credit (BND/kWh)<input type="number" name="export_credit" value="0.00" min="0" step="0.001" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">02 · Roof & solar resource <span>+</span></button>
+                <div class="form-section-body">
+                  <div class="field-grid two">
+                    <label>Roof area (m²)<input type="number" name="roof_area_m2" id="roof-area" value="650" min="1" step="any" /></label>
+                    <label>Usable roof (%)<input type="number" name="usable_roof_pct" value="75" min="10" max="100" step="5" /></label>
+                  </div>
+                  <div class="map-shell">
+                    <div id="roof-map"></div>
+                    <div class="map-fallback" id="map-fallback">Map unavailable — enter roof area manually.</div>
+                    <div class="map-caption">Optional: draw the rooftop polygon. Area updates automatically.</div>
+                  </div>
+                  <div class="field-grid three">
+                    <label>Latitude<input type="number" name="lat" id="building-lat" value="4.9031" step="any" /></label>
+                    <label>Longitude<input type="number" name="lon" id="building-lon" value="114.9398" step="any" /></label>
+                    <label>Area / kWp (m²)<input type="number" name="area_per_kwp" value="6.5" min="3" step="0.1" /></label>
+                  </div>
+                  <div class="field-grid three">
+                    <label>Specific yield (kWh/kWp/yr)<input type="number" name="specific_yield" value="1420" step="10" /></label>
+                    <label>Tilt (°)<input type="number" name="tilt" value="10" step="1" /></label>
+                    <label>Azimuth (°)<input type="number" name="azimuth" value="180" step="5" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">03 · Cost & finance <span>+</span></button>
+                <div class="form-section-body">
+                  <div class="field-grid two">
+                    <label>CAPEX (BND/kWp)<input type="number" name="capex_per_kwp" value="1500" step="50" /></label>
+                    <label>O&amp;M (% CAPEX/yr)<input type="number" name="om_pct" value="1.0" step="0.1" /></label>
+                  </div>
+                  <div class="field-grid three">
+                    <label>Down payment (%)<input type="number" name="down_payment_pct" value="20" step="5" /></label>
+                    <label>Loan rate (%)<input type="number" name="loan_rate_pct" value="5.5" step="0.1" /></label>
+                    <label>Loan tenor (yr)<input type="number" name="loan_years" value="10" step="1" /></label>
+                  </div>
+                  <div class="field-grid three">
+                    <label>Discount rate (%)<input type="number" name="discount_rate_pct" value="8" step="0.5" /></label>
+                    <label>Degradation (%/yr)<input type="number" name="degradation_pct" value="0.5" step="0.05" /></label>
+                    <label>Inverter replacement (% CAPEX)<input type="number" name="inverter_replacement_pct" value="8" step="1" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">04 · Sizing objective <span>+</span></button>
+                <div class="form-section-body">
+                  <label>Recommend for
+                    <select name="sizing_mode">
+                      <option value="financial_return" selected>Maximum financial return (IRR)</option>
+                      <option value="maximum_npv">Maximum NPV</option>
+                      <option value="cash_flow">Best financed cash flow</option>
+                      <option value="self_consumption">Self-consumption optimised</option>
+                      <option value="bill_offset">Maximum bill offset</option>
+                      <option value="maximum_roof">Maximum roof</option>
+                      <option value="custom">Custom capacity</option>
+                    </select>
+                  </label>
+                  <label>Custom capacity (kWp)<input type="number" name="capacity_kwp" value="78" step="1" min="0.1" /></label>
+                </div>
+              </div>
+
+              <button class="btn btn-solar btn-block" type="submit">Run Building Passport →</button>
+            </form>
+          </aside>
+
+          <section class="results-panel" id="building-results">
+            <div class="result-placeholder">
+              <span class="orbit"></span>
+              <h3>Your building decision appears here.</h3>
+              <p>Run the assessment to compare technical capacity with financially optimal sizing.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- PROJECT -->
+      <div class="passport-view" id="view-project">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PRODUCT B</p>
+            <h2>Project Bankability Passport</h2>
+            <p>Find the tariff and risk structure that can satisfy both investors and lenders.</p>
+          </div>
+          <div class="status-chip neutral" id="project-status-top">Awaiting assessment</div>
+        </div>
+
+        <div class="app-grid">
+          <aside class="input-panel">
+            <form id="project-form" novalidate>
+              <div class="form-section open">
+                <button type="button" class="form-section-title">01 · Plant & energy <span>−</span></button>
+                <div class="form-section-body">
+                  <label>Project name<input name="project_name" value="Brunei Solar 100" /></label>
+                  <div class="field-grid two">
+                    <label>DC capacity (MWp)<input type="number" name="mwp" value="120" step="1" /></label>
+                    <label>AC capacity (MWac)<input type="number" name="mwac" value="100" step="1" /></label>
+                  </div>
+                  <div class="field-grid two">
+                    <label>P50 specific yield (MWh/MWp/yr)<input type="number" name="p50_specific_yield" value="1500" step="10" /></label>
+                    <label>P90 / P50 (%)<input type="number" name="p90_factor_pct" value="95" step="0.5" /></label>
+                  </div>
+                  <div class="field-grid three">
+                    <label>Degradation (%)<input type="number" name="degradation_pct" value="0.45" step="0.05" /></label>
+                    <label>Curtailment (%)<input type="number" name="curtailment_pct" value="2" step="0.5" /></label>
+                    <label>Other losses (%)<input type="number" name="other_losses_pct" value="1" step="0.5" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">02 · CAPEX & OPEX <span>+</span></button>
+                <div class="form-section-body">
+                  <label>All-in CAPEX (BND/MWac)<input type="number" name="capex_per_mw" value="1500000" step="50000" /></label>
+                  <div class="field-grid two">
+                    <label>OPEX (BND/MWac/yr)<input type="number" name="opex_per_mw_year" value="24000" step="1000" /></label>
+                    <label>OPEX escalation (%)<input type="number" name="opex_escalation_pct" value="2" step="0.5" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">03 · Financing <span>+</span></button>
+                <div class="form-section-body">
+                  <div class="field-grid three">
+                    <label>Debt (%)<input type="number" name="debt_pct" value="65" step="5" /></label>
+                    <label>Debt rate (%)<input type="number" name="debt_rate_pct" value="5.5" step="0.1" /></label>
+                    <label>Debt tenor (yr)<input type="number" name="debt_tenor_years" value="15" step="1" /></label>
+                  </div>
+                  <div class="field-grid two">
+                    <label>Target equity IRR (%)<input type="number" name="target_equity_irr_pct" value="12" step="0.5" /></label>
+                    <label>Minimum P90 DSCR (×)<input type="number" name="min_dscr" value="1.25" step="0.05" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">04 · PPA & offtaker <span>+</span></button>
+                <div class="form-section-body">
+                  <div class="field-grid two">
+                    <label>Tested PPA tariff (BND/kWh)<input type="number" name="ppa_tariff" value="0.07" step="0.005" /></label>
+                    <label>PPA term (yr)<input type="number" name="ppa_years" value="25" step="1" /></label>
+                  </div>
+                  <div class="field-grid two">
+                    <label>Offtaker ceiling (BND/kWh)<input type="number" name="offtaker_ceiling" value="0.10" step="0.005" /><small>Optional direct economic ceiling.</small></label>
+                    <label>Tariff escalation (%/yr)<input type="number" name="tariff_escalation_pct" value="0" step="0.25" /></label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <button type="button" class="form-section-title">05 · Readiness <span>+</span></button>
+                <div class="form-section-body compact-sliders">
+                  <label>Grid readiness <span class="range-value">55</span><input type="range" name="grid_score" value="55" min="0" max="100" /></label>
+                  <label>PPA / offtake readiness <span class="range-value">55</span><input type="range" name="ppa_score" value="55" min="0" max="100" /></label>
+                  <label>Site / land readiness <span class="range-value">70</span><input type="range" name="site_score" value="70" min="0" max="100" /></label>
+                  <label>Financing readiness <span class="range-value">65</span><input type="range" name="financing_score" value="65" min="0" max="100" /></label>
+                  <label>Risk allocation readiness <span class="range-value">55</span><input type="range" name="risk_score" value="55" min="0" max="100" /></label>
+                </div>
+              </div>
+
+              <button class="btn btn-solar btn-block" type="submit">Run Project Passport →</button>
+            </form>
+          </aside>
+
+          <section class="results-panel" id="project-results">
+            <div class="result-placeholder">
+              <span class="orbit"></span>
+              <h3>Your bankability corridor appears here.</h3>
+              <p>Test the 7-cent case, solve the developer floor, and see which constraint actually binds.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="principles">
+      <p class="eyebrow">NORTH STAR</p>
+      <h2>Better energy-investment decisions.</h2>
+      <div class="principle-grid">
+        <article><span>01</span><h3>Vendor-neutral</h3><p>The decision engine can recommend less solar, a different structure, or no project.</p></article>
+        <article><span>02</span><h3>Assumption-visible</h3><p>Key inputs show source, confidence and owner instead of hiding judgement inside the model.</p></article>
+        <article><span>03</span><h3>Bankability-aware</h3><p>Project returns and debt capacity are tested separately, including the P90 lender case.</p></article>
+        <article><span>04</span><h3>Action-oriented</h3><p>Every Passport ends with the decision drivers and the conditions that would change the answer.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div><strong>Solar Passport</strong><span>Working MVP · Brunei Darussalam</span></div>
+    <p>Preliminary technical-commercial assessment only. Final engineering, structural, utility, legal, tax and financing approvals remain with appropriately qualified parties.</p>
+  </footer>
+
+  <dialog id="methodology-modal">
+    <button class="modal-close" aria-label="Close">×</button>
+    <p class="eyebrow">MODEL TRANSPARENCY</p>
+    <h2>What this MVP does</h2>
+    <div class="modal-copy">
+      <p><strong>Buildings.</strong> Calculates a pre-solar and post-solar bill, values self-consumption separately from export, models CAPEX/O&amp;M/degradation/inverter replacement, and compares multiple system sizes.</p>
+      <p><strong>Projects.</strong> Calculates P50/P90 energy, CFADS, debt service, DSCR, project/equity IRR, NPV and LCOE. It solves the tariff needed to meet the target equity IRR, P90 DSCR and zero project NPV.</p>
+      <p><strong>Solar resource.</strong> If <code>NREL_API_KEY</code> is configured on the server, the Building Passport uses PVWatts v8. Otherwise it uses the visible specific-yield assumption entered by the user.</p>
+      <p><strong>Current limitation.</strong> This MVP uses simplified monthly building load matching and annual project cash-flow modelling. It should be upgraded with interval load data, detailed tariff/net-metering rules, taxes/depreciation, construction drawdowns, DSRA, LLCR and verified grid/curtailment data before lender reliance.</p>
+    </div>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
