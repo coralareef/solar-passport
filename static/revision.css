@@ -1,0 +1,42 @@
+.hero-revised { min-height: 560px; }
+.resource-status { margin-top: 22px; display: grid; grid-template-columns: 12px 1fr; gap: 11px; align-items: start; padding: 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: rgba(0,0,0,.10); }
+.resource-status .status-dot { width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: #d9ad49; box-shadow: 0 0 0 4px rgba(217,173,73,.12); }
+.resource-status strong, .resource-status small { display: block; }
+.resource-status small { margin-top: 3px; color: rgba(255,255,255,.62); }
+.resource-status.connected .status-dot { background: #91dc73; box-shadow: 0 0 0 4px rgba(145,220,115,.13); }
+.resource-status.fallback .status-dot { background: #f4b55f; box-shadow: 0 0 0 4px rgba(244,181,95,.14); }
+.audience-note { max-width: 1500px; margin: -8px auto 22px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff8dc; font-size: 13px; }
+.revised-input { padding: 18px; }
+.quick-label { display: inline-block; margin: 2px 0 12px; color: var(--green-2); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.quick-section { padding: 17px 0 10px; border-top: 1px solid var(--line); }
+.quick-section:first-of-type { border-top: 0; padding-top: 0; }
+.quick-section h3 { margin: 0 0 13px; font: 800 16px/1.2 "Manrope", sans-serif; }
+.plain-callout { margin: 6px 0 12px; padding: 10px 11px; border-radius: 9px; background: var(--paper); color: var(--muted); font-size: 12px; line-height: 1.45; }
+.advanced-box { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fbfaf4; overflow: hidden; }
+.advanced-box summary { cursor: pointer; padding: 14px; font-weight: 800; font-size: 13px; list-style: none; }
+.advanced-box summary::-webkit-details-marker { display: none; }
+.advanced-box summary span { color: var(--muted); font-weight: 500; }
+.advanced-box[open] summary { border-bottom: 1px solid var(--line); }
+.advanced-intro { padding: 0 14px; color: var(--muted); font-size: 12px; }
+.advanced-group { padding: 4px 14px 12px; }
+.advanced-group h4 { margin: 12px 0 10px; font: 800 13px "Manrope", sans-serif; }
+.form-footnote { margin: 9px 4px 2px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.big-run { font-size: 15px; }
+.explainer { margin-top: 10px; padding: 13px 14px; border-left: 3px solid var(--green-2); border-radius: 0 9px 9px 0; background: var(--paper); color: var(--ink-2); font-size: 13px; }
+.result-source { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 13px 0; }
+.source-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 999px; background: var(--paper-2); font-size: 11px; font-weight: 800; }
+.source-pill.good { background: #dcefd8; color: #24552f; }
+.source-pill.warn { background: #fff0c2; color: #775c10; }
+.simple-metric-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.scenario.recommended { background: #f3f9ce; outline: 2px solid var(--solar-deep); }
+.scenario small { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.glossary-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.glossary-grid > div { padding: 14px; border-radius: 12px; background: var(--paper); }
+.glossary-grid p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.muted { color: var(--muted); }
+.methodology-modal { max-width: 760px; width: calc(100% - 32px); border: 0; border-radius: 18px; padding: 28px; color: var(--ink); background: var(--white); box-shadow: 0 32px 100px rgba(0,0,0,.25); }
+.methodology-modal::backdrop { background: rgba(10,20,16,.55); }
+.methodology-modal h2 { font: 800 36px/1 "Manrope"; letter-spacing: -.04em; }
+.modal-close { position: absolute; top: 12px; right: 14px; border: 0; background: transparent; font-size: 26px; cursor: pointer; }
+@media (max-width: 900px) { .simple-metric-grid { grid-template-columns: 1fr 1fr; } .field-grid.three { grid-template-columns: 1fr; } .glossary-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .simple-metric-grid { grid-template-columns: 1fr; } }
