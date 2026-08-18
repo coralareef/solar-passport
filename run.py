@@ -9,7 +9,9 @@ BASE_DIR = Path(__file__).resolve().parent
 def load_local_env(path: Path) -> bool:
     """Load simple KEY=VALUE pairs from .env without third-party packages.
 
-    Existing process environment variables win over .env values.
+    For the local launcher, values in .env intentionally override stale Windows
+    environment variables so the project folder remains the clear source of
+    local configuration.
     """
     if not path.exists():
         return False
@@ -21,13 +23,13 @@ def load_local_env(path: Path) -> bool:
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        if key:
             os.environ[key] = value
             loaded = True
     return loaded
 
 
-load_local_env(BASE_DIR / ".env")
+loaded_env = load_local_env(BASE_DIR / ".env")
 
 # Import only after .env has been loaded because app.py reads NREL_API_KEY at import time.
 import app  # noqa: E402
@@ -36,5 +38,6 @@ import app  # noqa: E402
 if __name__ == "__main__":
     configured = bool(os.getenv("NREL_API_KEY", "").strip())
     print("Solar Passport launcher")
-    print(f"NREL PVWatts API: {'configured' if configured else 'not configured — estimate mode'}")
+    print(f"Local .env: {'loaded' if loaded_env else 'not found'}")
+    print(f"NREL PVWatts API key: {'present' if configured else 'missing — estimate mode'}")
     app.run()
