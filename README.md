@@ -1,59 +1,119 @@
 # Solar Passport MVP
 
-A working, dependency-free Python web MVP for two products:
+Solar Passport is a Brunei-focused decision platform with two products:
 
-1. **Building Solar Passport** — preliminary building solar sizing, bill impact, self-consumption, financing, IRR/NPV/payback and readiness.
-2. **Project Bankability Passport** — PPA tariff solver, P50/P90 debt sizing tests, equity/project IRR, DSCR, NPV, LCOE, bankability corridor and CAPEX × tariff sensitivity.
+1. **Building Solar Passport** — for building/business owners deciding whether rooftop solar makes sense, what size to install, likely savings/payback, and whether financing improves or worsens monthly cash flow.
+2. **Project Bankability Passport** — for developers, investors, lenders and offtakers testing PPA tariffs, equity IRR, P90 DSCR, NPV, LCOE and the bankability corridor.
 
-## Run locally
+## Recommended Windows start
 
-```bash
-cd solar_passport
-python app.py
+The project remains dependency-free (Python 3.10+ standard library only).
+
+### First-time NREL setup
+
+1. Copy `.env.example` to a new file named `.env`.
+2. Open `.env` and enter your own NREL key:
+
+```text
+NREL_API_KEY=YOUR_KEY_HERE
+HOST=127.0.0.1
+PORT=5000
 ```
 
-Then open `http://127.0.0.1:5000`.
+3. `.env` is ignored by Git and must never be committed.
+4. Start with:
 
-## Optional PVWatts integration
-
-The website works without Python packages and without external API keys. In fallback mode the Building Passport uses the user-visible `specific yield` field.
-
-To enable NREL PVWatts v8:
-
-```bash
-export NREL_API_KEY="your-key"
-python app.py
+```bat
+cd /d D:\solar_passport
+py run.py
 ```
 
-Do **not** commit API keys to source code.
+or double-click `start.bat`.
 
-## MVP modelling boundaries
+`run.py` loads `.env` before importing the application. The older `py app.py` command does **not** load `.env`; use `run.py` for local development.
 
-### Building
-- Monthly load is currently flat across 12 months unless a future interval-load upload module is added.
-- Self-consumption is approximated from monthly PV and an estimated daytime load share.
-- Tariff A and a custom flat tariff are implemented. Detailed commercial demand/subscribed-capacity tariffs and net-metering credit carry-forward rules should be added from verified official sources.
-- Project cash flow includes degradation, O&M and a configurable inverter replacement.
+The website performs a small connection check on page load and shows either:
 
-### Project
-- Uses annual cash flows and level debt service.
-- P90 is represented as a user-defined P90/P50 factor.
-- The tariff solver independently tests target equity IRR, P90 DSCR and zero project NPV; the highest is the developer floor.
-- Tax is supported in the backend but set to zero in the current UI.
-- Construction drawdowns, IDC, DSRA, LLCR, sculpted debt, depreciation, withholding tax, FX, termination payments and detailed deemed-energy mechanics remain future modules.
+- **NREL PVWatts v8 connected**, or
+- **Estimate mode — NREL key not active**.
 
-## Security changes from the previous calculator
+PVWatts remains server-side; the API key is never sent to browser JavaScript.
 
-- API keys are no longer embedded in Python or JavaScript.
-- NREL key is read from `NREL_API_KEY` only on the server.
-- The roof map uses OpenStreetMap/Leaflet and does not require a Google Maps key.
+## Building Passport — revised customer flow
 
-## Suggested next build increments
+The normal Building Passport asks for:
 
-1. CSV/XLSX interval-load upload and hourly PV/load matching.
+- building type;
+- typical monthly bill;
+- typical monthly kWh from the bill;
+- roof area / map polygon;
+- cash vs financing preference.
+
+Technical inputs such as daytime-use share, export credit, specific yield fallback, tilt, azimuth, CAPEX/kWp, O&M, discount rate, degradation and inverter replacement are under **Advanced assumptions**.
+
+For business accounts, the quick screen derives an effective electricity price from `monthly bill / monthly kWh` instead of asking the customer for a "flat import rate".
+
+Solar Passport automatically compares:
+
+- maximum roof capacity;
+- annual bill/load offset sizing;
+- self-consumption sizing;
+- maximum IRR;
+- maximum NPV;
+- best first-year financed cash flow.
+
+The user does not need to choose a sizing objective.
+
+## Building modelling boundaries
+
+- PV generation uses NREL PVWatts v8 when configured; otherwise the visible specific-yield fallback is used.
+- Monthly building load is still flat across the year in this MVP.
+- Self-consumption still uses a daytime-share proxy. The UI estimates it by building type and lets an analyst override it.
+- The next accuracy improvement should be 15/30/60-minute or hourly load upload matched against hourly PVWatts generation.
+- Residential Tariff A and a custom/effective flat tariff are implemented.
+- Brunei commercial tariff rules, demand/subscribed-capacity charges and net-metering/export-credit treatment must be replaced with verified current rules before investment-grade reliance.
+- Cost inputs are assumptions until replaced by actual installer quotations.
+- Structural, electrical and utility approvals remain outside the software assessment.
+
+## Project modelling boundaries
+
+- Annual cash flows and level debt service.
+- P90 is represented by a user-entered P90/P50 factor.
+- Developer floor is the highest tariff required by equity IRR, P90 DSCR and zero project NPV constraints.
+- Construction drawdowns, IDC, DSRA, LLCR, sculpted debt, depreciation, withholding tax, FX, termination compensation and detailed deemed-energy mechanics remain future modules.
+
+## Security
+
+- No API keys are stored in source code.
+- `.env` is ignored by Git.
+- NREL is called from Python on the server.
+- The roof map uses OpenStreetMap/Leaflet and requires no Google Maps key.
+
+## Normal update workflow
+
+After changes are made to GitHub:
+
+```bat
+cd /d D:\solar_passport
+git pull
+py run.py
+```
+
+If you change files locally:
+
+```bat
+git status
+git add .
+git commit -m "Describe the change"
+git push
+```
+
+## Next recommended increments
+
+1. Interval-load CSV/XLSX upload and hourly PV/load matching.
 2. Verified Brunei commercial tariff and net-metering engine.
-3. Building quote/RFQ normaliser.
-4. Detailed project debt model with construction phase, DSRA and LLCR.
-5. Offtaker/gas-displacement value engine.
-6. Login, database, scenario persistence and evidence/source attachments.
-7. Branded PDF report generated server-side from a saved scenario.
+3. Bill upload/extraction and evidence tagging.
+4. Installer quotation upload and RFQ/quote normalisation.
+5. Branded Solar Passport PDF.
+6. Saved scenarios, accounts and database.
+7. Detailed project debt model and gas-displacement/offtaker value engine.
