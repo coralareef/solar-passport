@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -40,7 +41,6 @@ loaded_env = load_local_env(BASE_DIR / ".env")
 # Import only after .env has been loaded because app.py reads NREL_API_KEY at import time.
 import app  # noqa: E402
 
-# NLR retired the previous developer.nrel.gov domain in May 2026.
 PVWATTS_URL = "https://developer.nlr.gov/api/pvwatts/v8.json"
 app.PVWATTS_URL = PVWATTS_URL
 app.NREL_API_KEY = os.getenv("NREL_API_KEY", "").strip()
@@ -71,7 +71,8 @@ def pvwatts_generation(lat: float, lon: float, capacity_kwp: float, tilt: float,
     """PVWatts v8 with visible diagnostics and a safe estimate fallback."""
     global _pvwatts_diag
 
-    if app.NREL_API_KEY and capacity_kwp > 0:
+    capacity_kwp = float(capacity_kwp)
+    if app.NREL_API_KEY and capacity_kwp >= 0.05:
         params = {
             "api_key": app.NREL_API_KEY,
             "lat": lat,
@@ -82,7 +83,8 @@ def pvwatts_generation(lat: float, lon: float, capacity_kwp: float, tilt: float,
             "tilt": tilt,
             "azimuth": azimuth,
             "losses": losses,
-            "inv_eff": 96,
+            "gcr": 0.4,
+            "inv_eff": 96.0,
             "dc_ac_ratio": 1.2,
             "radius": 0,
             "dataset": "nsrdb",
@@ -90,7 +92,7 @@ def pvwatts_generation(lat: float, lon: float, capacity_kwp: float, tilt: float,
         query = urlencode(params)
         req = Request(
             f"{PVWATTS_URL}?{query}",
-            headers={"User-Agent": "SolarPassport-Brunei/0.2"},
+            headers={"User-Agent": "SolarPassport-Brunei/0.3"},
         )
         try:
             with urlopen(req, timeout=20) as res:
@@ -113,7 +115,7 @@ def pvwatts_generation(lat: float, lon: float, capacity_kwp: float, tilt: float,
                     "lat": station.get("lat"),
                     "lon": station.get("lon"),
                     "weather_data_source": station.get("weather_data_source"),
-                    "distance_m": station.get("distance"),
+                    "distance": station.get("distance"),
                 },
                 "checked_at": time.time(),
             }
@@ -140,12 +142,12 @@ def pvwatts_generation(lat: float, lon: float, capacity_kwp: float, tilt: float,
             "checked_at": time.time(),
         }
         print(f"[PVWATTS] Connection failed: {error}")
-    else:
+    elif not app.NREL_API_KEY:
         _pvwatts_diag = {
-            "configured": bool(app.NREL_API_KEY),
+            "configured": False,
             "connected": False,
             "endpoint": PVWATTS_URL,
-            "error": "NREL_API_KEY is missing" if not app.NREL_API_KEY else None,
+            "error": "NREL_API_KEY is missing",
             "station": None,
             "checked_at": time.time(),
         }
@@ -164,46 +166,53 @@ def pvwatts_generation(lat: float, lon: float, capacity_kwp: float, tilt: float,
 
 app.pvwatts_generation = pvwatts_generation
 
-# Prototype location search using the public OpenStreetMap Nominatim service.
-# Keep this lightweight: one request/second maximum and cache repeated searches.
+# Location search. Public geocoders are suitable only for this low-volume MVP.
+# Results are cached and requests are user-triggered. Nominatim is attempted first;
+# Photon is used as a fallback if Nominatim cannot be reached.
 _geocode_cache = {}
 _geocode_lock = threading.Lock()
 _last_geocode_request = 0.0
+BRUNEI_BOUNDS = {"south": 4.0, "north": 5.2, "west": 114.0, "east": 115.6}
 
 
-def geocode_brunei(query: str):
-    global _last_geocode_request
-    q = " ".join((query or "").strip().split())[:200]
-    if len(q) < 2:
-        return []
+def _inside_brunei(lat: float, lon: float) -> bool:
+    return (
+        BRUNEI_BOUNDS["south"] <= lat <= BRUNEI_BOUNDS["north"]
+        and BRUNEI_BOUNDS["west"] <= lon <= BRUNEI_BOUNDS["east"]
+    )
 
-    cache_key = q.casefold()
-    if cache_key in _geocode_cache:
-        return _geocode_cache[cache_key]
 
-    with _geocode_lock:
-        now = time.monotonic()
-        wait = 1.05 - (now - _last_geocode_request)
-        if wait > 0:
-            time.sleep(wait)
-        params = urlencode({
-            "q": q,
-            "format": "jsonv2",
-            "limit": 5,
-            "countrycodes": "bn",
-            "addressdetails": 1,
-        })
-        req = Request(
-            f"https://nominatim.openstreetmap.org/search?{params}",
-            headers={
-                "User-Agent": "SolarPassport-Brunei/0.2 (local rooftop assessment prototype)",
-                "Referer": "http://127.0.0.1:5000/",
-            },
-        )
-        with urlopen(req, timeout=15) as res:
-            raw = json.loads(res.read().decode("utf-8"))
-        _last_geocode_request = time.monotonic()
+def _coordinate_result(q: str):
+    m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*", q)
+    if not m:
+        return None
+    lat, lon = float(m.group(1)), float(m.group(2))
+    if -90 <= lat <= 90 and -180 <= lon <= 180:
+        return [{"display_name": f"Coordinates {lat:.5f}, {lon:.5f}", "lat": lat, "lon": lon, "type": "coordinates"}]
+    return None
 
+
+def _nominatim_search(q: str):
+    params = {
+        "q": q,
+        "format": "jsonv2",
+        "limit": 5,
+        "countrycodes": "bn",
+        "addressdetails": 1,
+    }
+    contact_email = os.getenv("GEOCODER_CONTACT_EMAIL", "").strip()
+    if contact_email:
+        params["email"] = contact_email
+    req = Request(
+        f"https://nominatim.openstreetmap.org/search?{urlencode(params)}",
+        headers={
+            "User-Agent": "SolarPassport-Brunei/0.3 (local rooftop assessment; github.com/coralareef/solar-passport)",
+            "Referer": "http://127.0.0.1:5000/",
+            "Accept": "application/json",
+        },
+    )
+    with urlopen(req, timeout=15) as res:
+        raw = json.loads(res.read().decode("utf-8"))
     results = []
     for item in raw[:5]:
         try:
@@ -219,8 +228,83 @@ def geocode_brunei(query: str):
             results.append(result)
         except (KeyError, TypeError, ValueError):
             continue
-    _geocode_cache[cache_key] = results
     return results
+
+
+def _photon_search(q: str):
+    params = urlencode({"q": q, "limit": 8, "lat": 4.9031, "lon": 114.9398, "lang": "en"})
+    req = Request(
+        f"https://photon.komoot.io/api/?{params}",
+        headers={"User-Agent": "SolarPassport-Brunei/0.3", "Accept": "application/json"},
+    )
+    with urlopen(req, timeout=15) as res:
+        raw = json.loads(res.read().decode("utf-8"))
+    results = []
+    for feature in raw.get("features", []):
+        try:
+            lon, lat = feature["geometry"]["coordinates"][:2]
+            lat, lon = float(lat), float(lon)
+            if not _inside_brunei(lat, lon):
+                continue
+            p = feature.get("properties") or {}
+            parts = []
+            for key in ("name", "street", "locality", "district", "city", "state", "country"):
+                value = p.get(key)
+                if value and value not in parts:
+                    parts.append(str(value))
+            results.append({
+                "display_name": ", ".join(parts) or q,
+                "lat": lat,
+                "lon": lon,
+                "type": p.get("type") or p.get("osm_value"),
+            })
+            if len(results) >= 5:
+                break
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+    return results
+
+
+def geocode_brunei(query: str):
+    global _last_geocode_request
+    q = " ".join((query or "").strip().split())[:200]
+    if len(q) < 2:
+        return {"results": [], "provider": None, "diagnostic": "Enter at least two characters."}
+
+    coords = _coordinate_result(q)
+    if coords is not None:
+        return {"results": coords, "provider": "coordinates", "diagnostic": None}
+
+    cache_key = q.casefold()
+    if cache_key in _geocode_cache:
+        return _geocode_cache[cache_key]
+
+    errors = []
+    with _geocode_lock:
+        now = time.monotonic()
+        wait = 1.05 - (now - _last_geocode_request)
+        if wait > 0:
+            time.sleep(wait)
+
+        for provider, fn in (("OpenStreetMap Nominatim", _nominatim_search), ("Photon", _photon_search)):
+            try:
+                results = fn(q)
+                _last_geocode_request = time.monotonic()
+                if results:
+                    response = {"results": results, "provider": provider, "diagnostic": None}
+                    _geocode_cache[cache_key] = response
+                    return response
+                errors.append(f"{provider}: no Brunei matches")
+            except HTTPError as exc:
+                errors.append(f"{provider}: {_safe_http_error(exc)}")
+            except URLError as exc:
+                errors.append(f"{provider}: network error: {exc.reason}")
+            except Exception as exc:
+                errors.append(f"{provider}: {type(exc).__name__}: {exc}")
+
+    diagnostic = " | ".join(errors)
+    print(f"[GEOCODE] Search failed for {q!r}: {diagnostic}")
+    return {"results": [], "provider": None, "diagnostic": diagnostic}
 
 
 BaseHandler = app.SolarPassportHandler
@@ -232,18 +316,17 @@ class RuntimeHandler(BaseHandler):
         path = parsed.path
 
         if path == "/api/pvwatts/status":
-            # Run a real, small probe so "connected" means the API actually responded.
-            pvwatts_generation(4.9031, 114.9398, 0.5, 10.0, 180.0, 14.0, 1420.0)
+            # Use the documented 4 kW reference size for the connection probe.
+            pvwatts_generation(4.9031, 114.9398, 4.0, 10.0, 180.0, 14.0, 1420.0)
             return self.send_json(dict(_pvwatts_diag))
 
         if path == "/api/geocode":
             try:
                 q = parse_qs(parsed.query).get("q", [""])[0]
-                return self.send_json({"results": geocode_brunei(q)})
-            except HTTPError as exc:
-                return self.send_json({"error": _safe_http_error(exc)}, 502)
+                return self.send_json(geocode_brunei(q))
             except Exception as exc:
-                return self.send_json({"error": f"Location search failed: {exc}"}, 502)
+                print(f"[GEOCODE] Endpoint error: {type(exc).__name__}: {exc}")
+                return self.send_json({"results": [], "provider": None, "diagnostic": f"Location search failed: {exc}"}, 502)
 
         if path == "/":
             html_path = BASE_DIR / "templates" / "index.html"
@@ -266,5 +349,5 @@ if __name__ == "__main__":
     print(f"Local .env: {'loaded' if loaded_env else 'not found'}")
     print(f"NREL PVWatts API key: {'present' if configured else 'missing — estimate mode'}")
     print(f"PVWatts endpoint: {PVWATTS_URL}")
-    print("PVWatts failures will now be printed here instead of silently falling back.")
+    print("PVWatts and location-search failures will be printed here with diagnostics.")
     app.run()
