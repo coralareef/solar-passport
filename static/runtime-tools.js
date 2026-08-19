@@ -25,8 +25,9 @@
       const data = await fetchJSON('/api/pvwatts/status');
       if (data.connected) {
         const weather = data.station?.weather_data_source ? ` Weather source: ${escapeHtml(data.station.weather_data_source)}.` : '';
+        const cache = data.cache_status ? ` Resource: ${escapeHtml(data.cache_status)}.` : '';
         badge.className = 'resource-status connected';
-        badge.innerHTML = `<span class="status-dot"></span><div><strong>NREL PVWatts v8 connected</strong><small>Live 4 kW API probe succeeded.${weather}</small></div>`;
+        badge.innerHTML = `<span class="status-dot"></span><div><strong>NREL PVWatts v8 ready</strong><small>Solar resource profile available.${cache}${weather}</small></div>`;
       } else {
         badge.className = 'resource-status fallback';
         badge.innerHTML = `<span class="status-dot"></span><div><strong>Estimate mode — PVWatts probe failed</strong><small>${escapeHtml(data.error || 'Unknown PVWatts error')}. The same diagnostic is printed in Command Prompt.</small></div>`;
