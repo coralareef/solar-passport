@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
-import statistics
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional
@@ -25,6 +25,7 @@ class IntervalParseReport:
     duplicate_rows: int
     skipped_rows: int
     missing_intervals_estimate: int
+    irregular_gap_count: int
     completeness_pct: float
     duplicate_policy: str
 
@@ -63,6 +64,39 @@ def _resolve_duplicate(values: list[float], policy: str) -> float:
     if policy == "average": return sum(values) / len(values)
     if policy == "sum": return sum(values)
     raise ValueError("Duplicate timestamp found. Choose an explicit duplicate_policy: first, last, average, or sum.")
+
+def _infer_base_interval_minutes(deltas: list[float]) -> float:
+    """Infer the base meter interval without allowing missing rows to inflate it.
+
+    The most frequent positive delta is preferred. If frequencies tie, the
+    smallest repeated spacing is used. This is more robust than a median when a
+    15-minute file contains one or more missing 15-minute records.
+    """
+    if not deltas:
+        raise ValueError("Could not infer interval duration from fewer than two unique timestamps")
+    rounded = [round(x, 6) for x in deltas if x > 0]
+    if not rounded:
+        raise ValueError("Could not infer a positive interval duration")
+    counts = Counter(rounded)
+    highest = max(counts.values())
+    candidates = [delta for delta, count in counts.items() if count == highest]
+    interval = min(candidates)
+    if interval <= 0 or interval > 24 * 60:
+        raise ValueError("Could not infer a plausible interval duration")
+    return interval
+
+def _gap_quality(deltas: list[float], interval_minutes: float) -> tuple[int, int]:
+    missing = 0
+    irregular = 0
+    for delta in deltas:
+        ratio = delta / interval_minutes
+        nearest = round(ratio)
+        tolerance = max(0.01, abs(ratio) * 0.005)
+        if nearest < 1 or abs(ratio - nearest) > tolerance:
+            irregular += 1
+            continue
+        missing += max(0, nearest - 1)
+    return missing, irregular
 
 def parse_load_csv(text: str, *, timestamp_column: Optional[str] = None, value_column: Optional[str] = None, value_type: Optional[str] = None, duplicate_policy: str = "error") -> IntervalParseReport:
     duplicate_policy = duplicate_policy.strip().lower()
@@ -121,16 +155,13 @@ def parse_load_csv(text: str, *, timestamp_column: Optional[str] = None, value_c
         ordered_raw.append((ts, value))
 
     deltas = [(b[0] - a[0]).total_seconds() / 60 for a, b in zip(ordered_raw, ordered_raw[1:]) if b[0] > a[0]]
-    interval_minutes = statistics.median(deltas)
-    if interval_minutes <= 0 or interval_minutes > 24 * 60:
-        raise ValueError("Could not infer a plausible interval duration")
+    interval_minutes = _infer_base_interval_minutes(deltas)
+    missing, irregular = _gap_quality(deltas, interval_minutes)
     hours = interval_minutes / 60
     points = tuple(IntervalPoint(ts, value if kind == "kwh" else value * hours) for ts, value in ordered_raw)
-    span_minutes = (ordered_raw[-1][0] - ordered_raw[0][0]).total_seconds() / 60
-    expected = int(round(span_minutes / interval_minutes)) + 1
-    missing = max(0, expected - len(points))
+    expected = len(points) + missing
     completeness = 100.0 * len(points) / expected if expected else 100.0
-    return IntervalParseReport(points, interval_minutes, kind, duplicates, skipped, missing, completeness, duplicate_policy)
+    return IntervalParseReport(points, interval_minutes, kind, duplicates, skipped, missing, irregular, completeness, duplicate_policy)
 
 def resample_hourly(points: Iterable[IntervalPoint]) -> tuple[IntervalPoint, ...]:
     buckets: dict[datetime, float] = {}
