@@ -5,6 +5,18 @@ from typing import Optional
 
 from .finance import ProjectFinanceInputs, model_project_finance, solve_tariff
 
+READINESS_WEIGHTS = {
+    "sponsor": 10,
+    "financing": 15,
+    "site_land": 10,
+    "solar_resource": 5,
+    "grid": 15,
+    "ppa_offtake": 15,
+    "approvals_environmental": 5,
+    "execution": 10,
+    "risk_allocation": 15,
+}
+
 @dataclass(frozen=True)
 class BankabilityAssessment:
     financial_status: str
@@ -34,20 +46,32 @@ def assess_bankability(i: ProjectFinanceInputs, *, readiness_scores: Optional[di
     financial_pass = all(x["pass"] for x in constraints.values())
     corridor = None
     if offtaker_ceiling_bnd_per_kwh is not None and developer_floor is not None:
-        corridor = developer_floor <= float(offtaker_ceiling_bnd_per_kwh)
+        ceiling = float(offtaker_ceiling_bnd_per_kwh)
+        if ceiling < 0:
+            raise ValueError("offtaker_ceiling_bnd_per_kwh must be >= 0")
+        corridor = developer_floor <= ceiling
     financial_status = "PASS" if financial_pass else "FAIL"
     if financial_pass and corridor is False:
         financial_status = "OFFTAKER_GAP"
 
-    scores = readiness_scores or {}
-    weights = {"sponsor": 10, "financing": 15, "site_land": 10, "solar_resource": 5, "grid": 15, "ppa_offtake": 15, "approvals_environmental": 5, "execution": 10, "risk_allocation": 15}
-    if scores:
-        bounded = {k: max(0.0, min(100.0, float(scores.get(k, 0.0)))) for k in weights}
-        readiness_score = sum(bounded[k] * weights[k] / 100 for k in weights)
-        readiness_status = "GREEN" if readiness_score >= 80 else "AMBER" if readiness_score >= 55 else "RED"
-    else:
+    if readiness_scores is None:
         readiness_score = 0.0
         readiness_status = "NOT_ASSESSED"
+    else:
+        missing = [k for k in READINESS_WEIGHTS if k not in readiness_scores]
+        extra = [k for k in readiness_scores if k not in READINESS_WEIGHTS]
+        if missing:
+            raise ValueError(f"Readiness assessment is incomplete; missing: {', '.join(missing)}")
+        if extra:
+            raise ValueError(f"Unknown readiness score field(s): {', '.join(extra)}")
+        bounded = {}
+        for key in READINESS_WEIGHTS:
+            raw = float(readiness_scores[key])
+            if not 0 <= raw <= 100:
+                raise ValueError(f"Readiness score {key} must be between 0 and 100")
+            bounded[key] = raw
+        readiness_score = sum(bounded[k] * READINESS_WEIGHTS[k] / 100 for k in READINESS_WEIGHTS)
+        readiness_status = "GREEN" if readiness_score >= 80 else "AMBER" if readiness_score >= 55 else "RED"
 
     if not financial_pass:
         combined = "RED — ECONOMICS FAIL"
