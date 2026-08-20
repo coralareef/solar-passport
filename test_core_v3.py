@@ -42,9 +42,19 @@ class TariffTests(unittest.TestCase):
         self.assertAlmostEqual(TARIFF.residential_bill(2000).amount_bnd, 118.00, places=2)
         self.assertAlmostEqual(TARIFF.residential_bill(4000).amount_bnd, 318.00, places=2)
 
+    def test_residential_forward_reverse_property(self):
+        for usage in (0, 250, 600, 601, 2000, 2500, 4000, 4520, 10000):
+            bill = TARIFF.residential_bill(usage).amount_bnd
+            self.assertAlmostEqual(TARIFF.residential_consumption_from_bill(bill), usage, places=5)
+
     def test_commercial_des_reference(self):
         self.assertAlmostEqual(TARIFF.commercial_bill(26880, 140).amount_bnd, 1948.80, places=2)
         self.assertAlmostEqual(TARIFF.commercial_consumption_from_bill(1948.80, 140), 26880, places=5)
+
+    def test_commercial_forward_reverse_property(self):
+        for usage in (0, 1000, 1400, 5000, 15400, 20000, 26880, 50000):
+            bill = TARIFF.commercial_bill(usage, 140).amount_bnd
+            self.assertAlmostEqual(TARIFF.commercial_consumption_from_bill(bill, 140), usage, places=5)
 
 class NetMeteringTests(unittest.TestCase):
     def test_energy_credit_carry_and_bill(self):
@@ -56,6 +66,12 @@ class NetMeteringTests(unittest.TestCase):
         self.assertAlmostEqual(feb.credit_used_kwh, 200)
         self.assertAlmostEqual(feb.net_billed_kwh, 50)
         self.assertAlmostEqual(feb.bill_bnd, 0.50)
+
+    def test_same_month_net_energy_uses_tariff_after_netting(self):
+        ledger = NetMeteringLedger(TARIFF, "residential")
+        row = ledger.settle(1000, 200)
+        self.assertAlmostEqual(row.net_billed_kwh, 800)
+        self.assertAlmostEqual(row.bill_bnd, 22.00)
 
     def test_credit_can_be_used_during_twelfth_future_period(self):
         ledger = NetMeteringLedger(TARIFF, "residential", rollover_months=12)
@@ -83,6 +99,20 @@ class IntervalTests(unittest.TestCase):
         self.assertAlmostEqual(sum(p.kwh for p in report.points), 6.0)
         self.assertAlmostEqual(resample_hourly(report.points)[0].kwh, 4.0)
 
+    def test_missing_row_does_not_inflate_inferred_interval(self):
+        text = "timestamp,kwh\n2026-01-01 00:00,1\n2026-01-01 00:15,1\n2026-01-01 00:45,1\n2026-01-01 01:00,1\n"
+        report = parse_load_csv(text)
+        self.assertAlmostEqual(report.inferred_interval_minutes, 15)
+        self.assertEqual(report.missing_intervals_estimate, 1)
+        self.assertAlmostEqual(report.completeness_pct, 80.0)
+        self.assertEqual(report.irregular_gap_count, 0)
+
+    def test_irregular_gap_is_reported(self):
+        text = "timestamp,kwh\n2026-01-01 00:00,1\n2026-01-01 00:15,1\n2026-01-01 00:37,1\n2026-01-01 00:52,1\n"
+        report = parse_load_csv(text)
+        self.assertAlmostEqual(report.inferred_interval_minutes, 15)
+        self.assertGreater(report.irregular_gap_count, 0)
+
     def test_duplicate_timestamps_fail_by_default(self):
         text = "timestamp,kwh\n2026-01-01 00:00,1\n2026-01-01 00:00,1\n2026-01-01 01:00,1\n"
         with self.assertRaises(ValueError):
@@ -101,6 +131,29 @@ class FinanceTests(unittest.TestCase):
         d = dict(capex_bnd=1_500_000, year1_p50_mwh=1800, p90_factor=.9, ppa_bnd_per_kwh=.10, ppa_years=25, opex_year1_bnd=24000, debt_pct=.65, debt_rate=.055, debt_tenor_years=15, dsra_months=6, target_equity_irr=.12, minimum_p90_dscr=1.25)
         d.update(kw)
         return ProjectFinanceInputs(**d)
+
+    def test_closed_form_one_year_all_equity(self):
+        i = ProjectFinanceInputs(capex_bnd=1000, year1_p50_mwh=10, p90_factor=.9, ppa_bnd_per_kwh=.11, ppa_years=1, opex_year1_bnd=0, discount_rate=0, debt_pct=0, debt_tenor_years=1, dsra_months=0, target_equity_irr=.1, minimum_p90_dscr=1.25)
+        r = model_project_finance(i)
+        self.assertAlmostEqual(r.project_irr, 0.10, places=8)
+        self.assertAlmostEqual(r.equity_irr, 0.10, places=8)
+        self.assertAlmostEqual(r.project_npv_bnd, 100.0, places=8)
+        self.assertAlmostEqual(r.lcoe_bnd_per_kwh, 0.10, places=8)
+
+    def test_closed_form_one_year_debt_dscr_llcr(self):
+        i = ProjectFinanceInputs(capex_bnd=1000, year1_p50_mwh=10, p90_factor=.9, ppa_bnd_per_kwh=.11, ppa_years=1, opex_year1_bnd=0, discount_rate=0, debt_pct=.5, debt_rate=0, debt_tenor_years=1, dsra_months=6, target_equity_irr=.1, minimum_p90_dscr=1.25)
+        r = model_project_finance(i)
+        # P90 CFADS = 10 MWh * 0.9 * 1000 * BND 0.11 = BND 990.
+        # One-year zero-interest debt service = BND 500, so DSCR and LLCR = 1.98.
+        self.assertAlmostEqual(r.p90_cfads[0], 990.0, places=8)
+        self.assertAlmostEqual(r.annual_debt_service_bnd, 500.0, places=8)
+        self.assertAlmostEqual(r.minimum_p90_dscr, 1.98, places=8)
+        self.assertAlmostEqual(r.llcr_p90, 1.98, places=8)
+        self.assertAlmostEqual(r.dsra_requirement_bnd, 250.0, places=8)
+
+    def test_closed_form_zero_npv_tariff_solver(self):
+        i = ProjectFinanceInputs(capex_bnd=1000, year1_p50_mwh=10, p90_factor=.9, ppa_bnd_per_kwh=.05, ppa_years=1, opex_year1_bnd=0, discount_rate=0, debt_pct=0, debt_tenor_years=1, dsra_months=0, target_equity_irr=.1, minimum_p90_dscr=1.25)
+        self.assertAlmostEqual(solve_tariff(i, "npv"), 0.10, places=7)
 
     def test_debt_metrics(self):
         r = model_project_finance(self.base())
