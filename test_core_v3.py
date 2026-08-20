@@ -7,6 +7,7 @@ from core_v3 import (
     parse_load_csv, resample_hourly, match_load_and_pv, IntervalPoint,
     ProjectFinanceInputs, model_project_finance, solve_tariff, debt_capacity_for_dscr,
     validate_net_metering_eligibility, PVWattsProfile, analyze_hourly_building,
+    assess_bankability,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -96,6 +97,16 @@ class FinanceTests(unittest.TestCase):
         debt = debt_capacity_for_dscr(i)
         self.assertGreaterEqual(debt, 0)
         self.assertLessEqual(debt, i.capex_bnd * .90)
+
+    def test_economics_and_readiness_are_separate(self):
+        i = self.base(ppa_bnd_per_kwh=1.0, debt_pct=0.0)
+        weak = {"sponsor":70,"financing":65,"site_land":70,"solar_resource":70,"grid":55,"ppa_offtake":55,"approvals_environmental":60,"execution":65,"risk_allocation":55}
+        a = assess_bankability(i, readiness_scores=weak, offtaker_ceiling_bnd_per_kwh=1.0)
+        self.assertEqual(a.financial_status, "PASS")
+        self.assertIn("READINESS GAPS", a.combined_status)
+        strong = {k:100 for k in weak}
+        b = assess_bankability(i, readiness_scores=strong, offtaker_ceiling_bnd_per_kwh=1.0)
+        self.assertIn("GREEN", b.combined_status)
 
 class BuildingEngineTests(unittest.TestCase):
     def test_hourly_self_use(self):
