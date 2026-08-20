@@ -10,6 +10,7 @@ from typing import Iterable, Optional
 _TIMESTAMP_NAMES = {"timestamp", "datetime", "date_time", "time", "date/time", "interval_start"}
 _ENERGY_NAMES = {"kwh", "energy_kwh", "consumption_kwh", "usage_kwh", "load_kwh"}
 _POWER_NAMES = {"kw", "power_kw", "demand_kw", "load_kw"}
+_DUPLICATE_POLICIES = {"error", "first", "last", "average", "sum"}
 
 @dataclass(frozen=True)
 class IntervalPoint:
@@ -25,6 +26,7 @@ class IntervalParseReport:
     skipped_rows: int
     missing_intervals_estimate: int
     completeness_pct: float
+    duplicate_policy: str
 
 @dataclass(frozen=True)
 class EnergyMatch:
@@ -55,7 +57,17 @@ def _find_column(fieldnames: list[str], candidates: set[str]) -> Optional[str]:
             return normalized[key]
     return None
 
-def parse_load_csv(text: str, *, timestamp_column: Optional[str] = None, value_column: Optional[str] = None, value_type: Optional[str] = None) -> IntervalParseReport:
+def _resolve_duplicate(values: list[float], policy: str) -> float:
+    if policy == "first": return values[0]
+    if policy == "last": return values[-1]
+    if policy == "average": return sum(values) / len(values)
+    if policy == "sum": return sum(values)
+    raise ValueError("Duplicate timestamp found. Choose an explicit duplicate_policy: first, last, average, or sum.")
+
+def parse_load_csv(text: str, *, timestamp_column: Optional[str] = None, value_column: Optional[str] = None, value_type: Optional[str] = None, duplicate_policy: str = "error") -> IntervalParseReport:
+    duplicate_policy = duplicate_policy.strip().lower()
+    if duplicate_policy not in _DUPLICATE_POLICIES:
+        raise ValueError(f"duplicate_policy must be one of {sorted(_DUPLICATE_POLICIES)}")
     reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
     if not reader.fieldnames:
         raise ValueError("CSV has no header row")
@@ -96,10 +108,16 @@ def parse_load_csv(text: str, *, timestamp_column: Optional[str] = None, value_c
     for ts, value in rows:
         grouped.setdefault(ts, []).append(value)
     duplicates = sum(max(0, len(v) - 1) for v in grouped.values())
+    if duplicates and duplicate_policy == "error":
+        duplicate_timestamps = [ts.isoformat() for ts, values in grouped.items() if len(values) > 1]
+        preview = ", ".join(duplicate_timestamps[:5])
+        suffix = " ..." if len(duplicate_timestamps) > 5 else ""
+        raise ValueError(f"CSV contains {duplicates} duplicate row(s) at timestamp(s): {preview}{suffix}. Resolve the source data or choose an explicit duplicate_policy.")
+
     ordered_raw = []
     for ts in sorted(grouped):
-        vals = grouped[ts]
-        value = sum(vals) if kind == "kwh" else sum(vals) / len(vals)
+        values = grouped[ts]
+        value = values[0] if len(values) == 1 else _resolve_duplicate(values, duplicate_policy)
         ordered_raw.append((ts, value))
 
     deltas = [(b[0] - a[0]).total_seconds() / 60 for a, b in zip(ordered_raw, ordered_raw[1:]) if b[0] > a[0]]
@@ -112,7 +130,7 @@ def parse_load_csv(text: str, *, timestamp_column: Optional[str] = None, value_c
     expected = int(round(span_minutes / interval_minutes)) + 1
     missing = max(0, expected - len(points))
     completeness = 100.0 * len(points) / expected if expected else 100.0
-    return IntervalParseReport(points, interval_minutes, kind, duplicates, skipped, missing, completeness)
+    return IntervalParseReport(points, interval_minutes, kind, duplicates, skipped, missing, completeness, duplicate_policy)
 
 def resample_hourly(points: Iterable[IntervalPoint]) -> tuple[IntervalPoint, ...]:
     buckets: dict[datetime, float] = {}
