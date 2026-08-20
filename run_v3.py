@@ -49,6 +49,15 @@ def _finance_inputs(payload: dict) -> ProjectFinanceInputs:
     values = {k: payload[k] for k in allowed if k in payload}
     return ProjectFinanceInputs(**values)
 
+def _parse_interval_payload(payload: dict):
+    return parse_load_csv(
+        str(payload.get("csv", "")),
+        timestamp_column=payload.get("timestamp_column"),
+        value_column=payload.get("value_column"),
+        value_type=payload.get("value_type"),
+        duplicate_policy=str(payload.get("duplicate_policy", "error")),
+    )
+
 def _pv_metadata(profile):
     """Return resource provenance without echoing 8,760 hourly values to the browser."""
     return {
@@ -114,11 +123,12 @@ class CoreV3Handler(BaseHandler):
                 })
 
             if path == "/api/v3/interval/parse":
-                report = parse_load_csv(str(payload.get("csv", "")), timestamp_column=payload.get("timestamp_column"), value_column=payload.get("value_column"), value_type=payload.get("value_type"))
+                report = _parse_interval_payload(payload)
                 return self.send_json({
                     "inferred_interval_minutes": report.inferred_interval_minutes,
                     "source_value_type": report.source_value_type, "valid_points": len(report.points),
-                    "duplicate_rows": report.duplicate_rows, "skipped_rows": report.skipped_rows,
+                    "duplicate_rows": report.duplicate_rows, "duplicate_policy": report.duplicate_policy,
+                    "skipped_rows": report.skipped_rows,
                     "missing_intervals_estimate": report.missing_intervals_estimate,
                     "completeness_pct": report.completeness_pct,
                     "annual_kwh_in_file": sum(x.kwh for x in report.points),
@@ -126,7 +136,17 @@ class CoreV3Handler(BaseHandler):
                 })
 
             if path == "/api/v3/building/hourly":
-                report = parse_load_csv(str(payload.get("csv", "")), timestamp_column=payload.get("timestamp_column"), value_column=payload.get("value_column"), value_type=payload.get("value_type"))
+                report = _parse_interval_payload(payload)
+                minimum_completeness = float(payload.get("minimum_completeness_pct", 95.0))
+                if not 0 <= minimum_completeness <= 100:
+                    raise ValueError("minimum_completeness_pct must be between 0 and 100")
+                allow_incomplete = bool(payload.get("allow_incomplete", False))
+                if report.completeness_pct < minimum_completeness and not allow_incomplete:
+                    raise ValueError(
+                        f"Interval dataset completeness is {report.completeness_pct:.2f}%, below the required {minimum_completeness:.2f}%. "
+                        "Repair the dataset or explicitly set allow_incomplete=true for a provisional analysis."
+                    )
+
                 capacity = float(payload["capacity_kwp"])
                 tariff = str(payload.get("tariff", "residential"))
                 category = str(payload.get("customer_category", tariff)).lower()
@@ -150,14 +170,21 @@ class CoreV3Handler(BaseHandler):
                     subscribed_kva=payload.get("subscribed_kva"), net_metering=nm_applied,
                 )
                 warnings = []
-                if report.completeness_pct < 95:
-                    warnings.append("Interval dataset completeness is below 95%; results should be treated as provisional.")
+                if report.completeness_pct < minimum_completeness:
+                    warnings.append("Interval dataset is below the configured completeness threshold; analysis was explicitly allowed as provisional.")
+                if report.skipped_rows:
+                    warnings.append(f"{report.skipped_rows} row(s) could not be parsed and were excluded.")
                 if nm_requested and not nm_applied:
                     warnings.append("Net-metering was requested but not applied because current eligibility checks did not pass.")
                 rules = ["NM_CAPACITY_RANGE", "NM_CUSTOMER_ELIGIBILITY", _tariff_rule_id(tariff)]
                 if nm_requested: rules.append("NM_CREDIT_SETTLEMENT")
                 return self.send_json({
-                    "interval_report": {"interval_minutes": report.inferred_interval_minutes, "valid_points": len(report.points), "completeness_pct": report.completeness_pct, "missing_intervals_estimate": report.missing_intervals_estimate},
+                    "interval_report": {
+                        "interval_minutes": report.inferred_interval_minutes, "valid_points": len(report.points),
+                        "completeness_pct": report.completeness_pct, "missing_intervals_estimate": report.missing_intervals_estimate,
+                        "duplicate_rows": report.duplicate_rows, "duplicate_policy": report.duplicate_policy,
+                        "skipped_rows": report.skipped_rows,
+                    },
                     "pv_source": _pv_metadata(profile),
                     "net_metering_requested": nm_requested, "net_metering_applied": nm_applied,
                     "net_metering_eligibility": eligibility, "result": _json_safe(result),
