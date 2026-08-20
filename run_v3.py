@@ -130,6 +130,7 @@ class CoreV3Handler(BaseHandler):
                     "duplicate_rows": report.duplicate_rows, "duplicate_policy": report.duplicate_policy,
                     "skipped_rows": report.skipped_rows,
                     "missing_intervals_estimate": report.missing_intervals_estimate,
+                    "irregular_gap_count": report.irregular_gap_count,
                     "completeness_pct": report.completeness_pct,
                     "annual_kwh_in_file": sum(x.kwh for x in report.points),
                     "audit": _audit(payload),
@@ -141,10 +142,16 @@ class CoreV3Handler(BaseHandler):
                 if not 0 <= minimum_completeness <= 100:
                     raise ValueError("minimum_completeness_pct must be between 0 and 100")
                 allow_incomplete = bool(payload.get("allow_incomplete", False))
+                allow_irregular = bool(payload.get("allow_irregular_intervals", False))
                 if report.completeness_pct < minimum_completeness and not allow_incomplete:
                     raise ValueError(
                         f"Interval dataset completeness is {report.completeness_pct:.2f}%, below the required {minimum_completeness:.2f}%. "
                         "Repair the dataset or explicitly set allow_incomplete=true for a provisional analysis."
+                    )
+                if report.irregular_gap_count and not allow_irregular:
+                    raise ValueError(
+                        f"Interval dataset contains {report.irregular_gap_count} irregular timestamp gap(s) that are not whole multiples of the inferred {report.inferred_interval_minutes:g}-minute interval. "
+                        "Repair the timestamps or explicitly set allow_irregular_intervals=true for a provisional analysis."
                     )
 
                 capacity = float(payload["capacity_kwp"])
@@ -172,6 +179,8 @@ class CoreV3Handler(BaseHandler):
                 warnings = []
                 if report.completeness_pct < minimum_completeness:
                     warnings.append("Interval dataset is below the configured completeness threshold; analysis was explicitly allowed as provisional.")
+                if report.irregular_gap_count:
+                    warnings.append("Interval dataset contains irregular timestamp gaps; analysis was explicitly allowed as provisional.")
                 if report.skipped_rows:
                     warnings.append(f"{report.skipped_rows} row(s) could not be parsed and were excluded.")
                 if nm_requested and not nm_applied:
@@ -182,6 +191,7 @@ class CoreV3Handler(BaseHandler):
                     "interval_report": {
                         "interval_minutes": report.inferred_interval_minutes, "valid_points": len(report.points),
                         "completeness_pct": report.completeness_pct, "missing_intervals_estimate": report.missing_intervals_estimate,
+                        "irregular_gap_count": report.irregular_gap_count,
                         "duplicate_rows": report.duplicate_rows, "duplicate_policy": report.duplicate_policy,
                         "skipped_rows": report.skipped_rows,
                     },
