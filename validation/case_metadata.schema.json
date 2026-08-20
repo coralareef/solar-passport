@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solar-passport.local/schemas/case_metadata.schema.json",
+  "title": "Solar Passport anonymized validation case metadata",
+  "type": "object",
+  "required": [
+    "case_id",
+    "category",
+    "tariff",
+    "data_period_start",
+    "data_period_end",
+    "evidence_status",
+    "consent_for_model_validation"
+  ],
+  "properties": {
+    "case_id": {"type": "string", "pattern": "^[A-Z0-9-]+$"},
+    "category": {"type": "string", "enum": ["residential", "commercial", "large_ci", "utility_project"]},
+    "district": {"type": ["string", "null"]},
+    "approx_lat": {"type": ["number", "null"], "minimum": -90, "maximum": 90},
+    "approx_lon": {"type": ["number", "null"], "minimum": -180, "maximum": 180},
+    "tariff": {"type": "string"},
+    "subscribed_kva": {"type": ["number", "null"], "minimum": 0},
+    "interval_minutes": {"type": ["number", "null"], "exclusiveMinimum": 0},
+    "data_period_start": {"type": "string", "format": "date"},
+    "data_period_end": {"type": "string", "format": "date"},
+    "evidence_status": {"type": "string", "enum": ["entered", "estimated", "benchmark", "verified_source_data"]},
+    "source_type": {"type": ["string", "null"]},
+    "consent_for_model_validation": {"const": true},
+    "contains_personal_identifiers": {"type": "boolean", "default": false},
+    "notes": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}
