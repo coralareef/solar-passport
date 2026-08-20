@@ -1,0 +1,61 @@
+{
+  "version": "2026-08-20.1",
+  "status": "clarification_required",
+  "purpose": "Worked scenarios for authoritative DES/DSP confirmation of Tariff B net-metering settlement.",
+  "subscribed_kva": 140,
+  "published_tariff_blocks": [
+    {"width_formula": "10*kVA", "width_kwh": 1400, "rate_bnd_per_kwh": 0.20},
+    {"width_formula": "100*kVA", "width_kwh": 14000, "rate_bnd_per_kwh": 0.07},
+    {"width_formula": "100*kVA", "width_kwh": 14000, "rate_bnd_per_kwh": 0.06},
+    {"width_formula": "remaining", "width_kwh": null, "rate_bnd_per_kwh": 0.05}
+  ],
+  "scenarios": [
+    {
+      "id": "B1_same_month_netting",
+      "import_kwh": 20000,
+      "export_kwh": 5000,
+      "opening_credit_kwh": 0,
+      "core_v3_assumption": {
+        "net_billed_kwh": 15000,
+        "bill_bnd": 1232.00,
+        "sequence": "net import/export in kWh, then apply Tariff B"
+      },
+      "question": "Confirm whether energy is netted before Tariff B block application."
+    },
+    {
+      "id": "B2_carried_credit",
+      "month_1": {"import_kwh": 5000, "export_kwh": 10000, "closing_credit_kwh": 5000, "bill_bnd": 0},
+      "month_2": {"import_kwh": 20000, "export_kwh": 2000, "opening_credit_kwh": 5000},
+      "core_v3_assumption": {"month_2_net_billed_kwh": 13000, "month_2_bill_bnd": 1092.00},
+      "question": "Confirm whether carried kWh credit is deducted before Tariff B block calculation."
+    },
+    {
+      "id": "B3_block_crossing",
+      "import_kwh": 35000,
+      "export_kwh": 7000,
+      "opening_credit_kwh": 0,
+      "core_v3_assumption": {"net_billed_kwh": 28000, "bill_bnd": 2016.00},
+      "gross_import_bill_before_export_bnd": 2380.00,
+      "question": "Confirm whether export reduces energy entering later Tariff B blocks."
+    },
+    {
+      "id": "B4_credit_expiry",
+      "created_credit_kwh": 100,
+      "rollover_months": 12,
+      "question": "Define the exact billing period in which a credit created in period 1 expires."
+    },
+    {
+      "id": "B5_tariff_change_with_credit",
+      "opening_credit_kwh": 5000,
+      "future_import_kwh": 8000,
+      "question": "Confirm whether carried kWh is netted against current energy under the new tariff or retains original-period monetary value."
+    },
+    {
+      "id": "C1_capacity_basis",
+      "pv_dc_kwp": 1080,
+      "inverter_ac_kw": 900,
+      "dc_ac_ratio": 1.2,
+      "question": "Confirm whether the 1 MW programme limit is based on kWp DC, kWac, export capacity at PCC, or another measure."
+    }
+  ]
+}
