@@ -1,0 +1,166 @@
+{
+  "registry_version": "2026-08-20.1",
+  "jurisdiction": "Brunei Darussalam",
+  "rules": [
+    {
+      "id": "RE_TARGET_2035",
+      "topic": "national_target",
+      "status": "verified",
+      "value": {"renewable_share_installed_capacity_pct": 30, "target_year": 2035},
+      "source_title": "Department of Energy - IRENA General Assembly / ADSW 2026",
+      "source_url": "https://www.energy.gov.bn/the-16th-international-renewable-energy-agency-irena-general-assembly-and-the-16th-abu-dhabi-sustainability-week-adsw/",
+      "verified_on": "2026-08-20",
+      "notes": "At least 30% renewable energy share in total installed capacity by 2035."
+    },
+    {
+      "id": "NM_CAPACITY_RANGE",
+      "topic": "net_metering",
+      "status": "verified",
+      "value": {"minimum_kw": 1, "maximum_kw": 1000},
+      "source_title": "Department of Energy - Net Metering Programme",
+      "source_url": "https://www.energy.gov.bn/net-metering-programme/",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "NM_CUSTOMER_ELIGIBILITY",
+      "topic": "net_metering",
+      "status": "verified",
+      "value": {
+        "existing_des_customer_required": true,
+        "no_outstanding_arrears_required": true,
+        "solar_pv_only": true,
+        "eligible_categories": ["residential", "government", "commercial", "industrial"]
+      },
+      "source_title": "Department of Energy - Net Metering Programme",
+      "source_url": "https://www.energy.gov.bn/net-metering-programme/",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "NM_APPLICATION_AGENT",
+      "topic": "net_metering",
+      "status": "verified",
+      "value": {"customer_appoints_contractor_or_installer": true, "contractor_submits_final_application": true},
+      "source_title": "Department of Energy - Net Metering Programme",
+      "source_url": "https://www.energy.gov.bn/net-metering-programme/",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "NM_CREDIT_SETTLEMENT",
+      "topic": "net_metering",
+      "status": "verified",
+      "value": {
+        "credit_basis": "prevailing gazetted tariff for relevant supply voltage at Point of Common Coupling",
+        "rollover_months_max": 12,
+        "cash_payout": false,
+        "remaining_credit_after_rollover": "forfeited"
+      },
+      "source_title": "Net-Metering Guideline, Chapter 6",
+      "source_url": "https://www.energy.gov.bn/wp-content/uploads/2026/02/2025-Net-metering-Guideline-ENG-FINAL-vF-1.pdf",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "NM_LICENSE_EXEMPTION",
+      "topic": "net_metering",
+      "status": "verified",
+      "value": {"electricity_license_required_for_qualifying_systems_up_to_1mw": false},
+      "source_title": "Net-Metering Guideline, Chapter 8.4",
+      "source_url": "https://www.energy.gov.bn/wp-content/uploads/2026/02/2025-Net-metering-Guideline-ENG-FINAL-vF-1.pdf",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "NM_ENVIRONMENTAL_ATTRIBUTES",
+      "topic": "environmental_attributes",
+      "status": "verified",
+      "value": {"owner": "net-metering consumer or investor / asset owner"},
+      "source_title": "Net-Metering Guideline, Chapter 8.5",
+      "source_url": "https://www.energy.gov.bn/wp-content/uploads/2026/02/2025-Net-metering-Guideline-ENG-FINAL-vF-1.pdf",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "DES_TARIFF_A",
+      "topic": "electricity_tariff",
+      "status": "verified",
+      "effective_from": "2012-01-01",
+      "value": {
+        "category": "residential",
+        "tiers": [
+          {"from_kwh": 0, "to_kwh": 600, "rate_bnd_per_kwh": 0.01},
+          {"from_kwh": 600, "to_kwh": 2000, "rate_bnd_per_kwh": 0.08},
+          {"from_kwh": 2000, "to_kwh": 4000, "rate_bnd_per_kwh": 0.10},
+          {"from_kwh": 4000, "to_kwh": null, "rate_bnd_per_kwh": 0.12}
+        ]
+      },
+      "source_title": "DES Electricity Tariff",
+      "source_url": "https://www.des.gov.bn/electricity-tariff/",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "DES_TARIFF_B",
+      "topic": "electricity_tariff",
+      "status": "verified",
+      "value": {
+        "category": "commercial",
+        "requires_subscribed_kva": true,
+        "blocks": [
+          {"units_times_kva": 10, "rate_bnd_per_unit": 0.20},
+          {"units_times_kva": 100, "rate_bnd_per_unit": 0.07},
+          {"units_times_kva": 100, "rate_bnd_per_unit": 0.06},
+          {"remaining": true, "rate_bnd_per_unit": 0.05}
+        ],
+        "heavy_industry_applicable": false
+      },
+      "source_title": "DES Electricity Tariff",
+      "source_url": "https://www.des.gov.bn/electricity-tariff/",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "COMMERCIAL_TARIFF_2028_PROPOSAL",
+      "topic": "electricity_tariff",
+      "status": "announced_not_effective",
+      "value": {"change": "progressive commercial electricity tariff", "proposed_year": 2028},
+      "source_title": "Department of Energy - Electricity Sector for the Commercial Sector Reviewed",
+      "source_url": "https://www.energy.gov.bn/electricity-sector-for-the-commercial-sector-reviewed/",
+      "verified_on": "2026-08-20",
+      "notes": "Do not use as an effective tariff until formal rates and commencement are published."
+    },
+    {
+      "id": "SOLAR_GUIDELINE_OUTDOOR_2026",
+      "topic": "technical_compliance",
+      "status": "verified",
+      "effective_revision": "ESCOM/2026/05 Revision 1.0",
+      "value": {
+        "minimum_outdoor_inverter_ip_rating": "IP65",
+        "grid_connected_inverter_type": "grid-following",
+        "outdoor_cable_entry": "bottom entry",
+        "top_entry_outdoor_prohibited": true,
+        "series_connected_module_bypass_diodes_min_per_module": 3
+      },
+      "source_title": "Guidelines and Best Practices for Solar Photovoltaic Design, Installations and Maintenance (Outdoor)",
+      "source_url": "https://shena.gov.bn/assets/publication_and_resources/escom_2026_05-solar-photovoltaic-design-installations-and-maintenance-%28outdoor%29.pdf",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "SOLAR_CONTRACTOR_REGISTRATION",
+      "topic": "contractor_registration",
+      "status": "verified",
+      "value": {
+        "supplier_abci_class": "P05",
+        "installer_abci_class": "E01",
+        "registration_managed_by": "Department of Energy"
+      },
+      "source_title": "Department of Energy - Registration as Solar PV Supplier / Contractor / Installer",
+      "source_url": "https://www.energy.gov.bn/registration-as-solar-pv-supplier-contractor-installer/",
+      "verified_on": "2026-08-20"
+    },
+    {
+      "id": "IREC_BRUNEI_ISSUER_SUPPORT",
+      "topic": "environmental_attributes",
+      "status": "verified_external_standard",
+      "value": {"country_listed_by_itrack_issuer_program": true},
+      "source_title": "I-TRACK Foundation - Issuers",
+      "source_url": "https://www.irecstandard.org/issuers/",
+      "verified_on": "2026-08-20",
+      "notes": "Certificate issuance, facility eligibility, fees, ownership and monetization still require project-specific verification. Do not assume I-REC revenue in base-case economics."
+    }
+  ]
+}
