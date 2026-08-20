@@ -1,0 +1,56 @@
+{
+  "case_id": "FIN-UTILITY-001",
+  "label": "Standardized 100 MWac / 120 MWp utility-scale solar reconciliation case",
+  "status": "synthetic_standard_case",
+  "purpose": "Provide one fixed input set that can be run independently in Core v3 and an external bank/project-finance model.",
+  "plant_context": {
+    "dc_capacity_mwp": 120,
+    "ac_capacity_mwac": 100,
+    "year1_p50_specific_yield_mwh_per_mwp": 1500,
+    "year1_p50_generation_mwh": 180000
+  },
+  "core_v3_inputs": {
+    "capex_bnd": 150000000,
+    "year1_p50_mwh": 180000,
+    "p90_factor": 0.95,
+    "ppa_bnd_per_kwh": 0.10,
+    "ppa_years": 25,
+    "degradation": 0.0045,
+    "curtailment": 0.02,
+    "other_losses": 0.01,
+    "opex_year1_bnd": 2400000,
+    "opex_escalation": 0.02,
+    "tariff_escalation": 0.0,
+    "tax_rate": 0.0,
+    "discount_rate": 0.08,
+    "debt_pct": 0.65,
+    "debt_rate": 0.055,
+    "debt_tenor_years": 15,
+    "dsra_months": 6.0,
+    "dsra_funded_by_equity": true,
+    "target_equity_irr": 0.12,
+    "minimum_p90_dscr": 1.25
+  },
+  "conventions_to_reconcile": [
+    "P50 and P90 are energy cases using the same tariff/opex assumptions",
+    "debt service is level annual debt service",
+    "DSRA is sized as months of annual debt service and funded by equity at financial close",
+    "DSRA is released to equity at debt maturity",
+    "LLCR is NPV of CFADS during remaining loan life discounted at debt rate divided by outstanding debt at financial close",
+    "tax is intentionally zero in this standard case",
+    "construction drawdown, IDC, depreciation, working capital and sculpted debt are intentionally excluded"
+  ],
+  "baseline_core_v3_outputs_for_comparison": {
+    "annual_debt_service_bnd_approx": 9713495.77,
+    "dsra_requirement_bnd_approx": 4856747.88,
+    "equity_funding_at_close_bnd_approx": 57356747.88,
+    "project_irr_pct_approx": 7.9421,
+    "equity_irr_pct_approx": 9.6006,
+    "project_npv_bnd_approx": -707546.95,
+    "lcoe_bnd_per_kwh_approx": 0.100394,
+    "minimum_p90_dscr_approx": 1.27745,
+    "llcr_p50_approx": 1.47079,
+    "llcr_p90_approx": 1.38329
+  },
+  "warning": "The baseline outputs are Core v3 outputs for reconciliation; they are not bank-approved answers. External model differences must be explained before Gate V3-GATE-02 can pass."
+}
