@@ -1,0 +1,24 @@
+name: Core v3 regression tests
+
+on:
+  push:
+    branches: [main, core-v3]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python
+        run: python -m compileall -q core_v3 validation run_v3.py
+      - name: Core v3 regression tests
+        run: python -m unittest -v test_core_v3.py
+      - name: Validation fixture regressions
+        run: python -m unittest -v test_validation_assets.py
+      - name: Existing v2 regression tests
+        run: python -m unittest -v test_model_v2.py

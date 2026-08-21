@@ -1,0 +1,235 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+import run  # loads .env and preserves the current UI/runtime helpers
+import app
+from core_v3 import (
+    PolicyRegistry, TariffEngine, NetMeteringLedger, parse_load_csv,
+    ProjectFinanceInputs, model_project_finance, debt_capacity_for_dscr,
+    PVWattsClient, analyze_hourly_building, validate_net_metering_eligibility,
+    assess_bankability, make_audit,
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+CORE_V3_VERSION = "3.0.0-alpha.1"
+REGISTRY = PolicyRegistry.from_path(BASE_DIR / "data" / "policy_registry.json")
+TARIFFS = TariffEngine(REGISTRY)
+PVWATTS = PVWattsClient(cache_path=BASE_DIR / ".cache" / "core_v3_pvwatts.json")
+BaseHandler = run.RuntimeHandler
+
+POLICY_SNAPSHOT_IDS = [
+    "NM_CAPACITY_RANGE", "NM_CUSTOMER_ELIGIBILITY", "NM_CREDIT_SETTLEMENT",
+    "DES_TARIFF_A", "DES_TARIFF_B",
+]
+
+def _json_safe(value):
+    if hasattr(value, "__dataclass_fields__"):
+        return {k: _json_safe(v) for k, v in asdict(value).items()}
+    if isinstance(value, dict): return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)): return [_json_safe(v) for v in value]
+    return value
+
+def _audit(payload: dict, rule_ids=()):
+    return make_audit(
+        model_version=CORE_V3_VERSION,
+        policy_registry_version=REGISTRY.registry_version,
+        input_payload=payload,
+        policy_rule_ids=rule_ids,
+    ).to_dict()
+
+def _tariff_rule_id(tariff: str) -> str:
+    return "DES_TARIFF_B" if tariff.strip().lower() in {"b", "tariff_b", "commercial"} else "DES_TARIFF_A"
+
+def _finance_inputs(payload: dict) -> ProjectFinanceInputs:
+    allowed = set(ProjectFinanceInputs.__dataclass_fields__)
+    values = {k: payload[k] for k in allowed if k in payload}
+    return ProjectFinanceInputs(**values)
+
+def _parse_interval_payload(payload: dict):
+    return parse_load_csv(
+        str(payload.get("csv", "")),
+        timestamp_column=payload.get("timestamp_column"),
+        value_column=payload.get("value_column"),
+        value_type=payload.get("value_type"),
+        duplicate_policy=str(payload.get("duplicate_policy", "error")),
+    )
+
+def _pv_metadata(profile):
+    """Return resource provenance without echoing 8,760 hourly values to the browser."""
+    return {
+        "source": profile.source,
+        "lat": profile.lat,
+        "lon": profile.lon,
+        "tilt": profile.tilt,
+        "azimuth": profile.azimuth,
+        "losses_pct": profile.losses_pct,
+        "annual_kwh_per_kwp": profile.annual_kwh_per_kwp,
+        "monthly_kwh_per_kwp": list(profile.monthly_kwh_per_kwp),
+        "capacity_factor_pct": profile.capacity_factor_pct,
+        "weather_data_source": profile.weather_data_source,
+        "station_distance_m": profile.station_distance_m,
+        "hourly_points": len(profile.hourly_kwh_per_kwp or ()),
+    }
+
+class CoreV3Handler(BaseHandler):
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/v3/status":
+            return self.send_json({
+                "ok": True, "core_v3_version": CORE_V3_VERSION,
+                "policy_registry_version": REGISTRY.registry_version,
+                "modules": ["policy", "evidence", "audit", "tariffs", "net_metering", "interval_load", "hourly_pv", "building_hourly", "project_finance", "bankability"],
+            })
+        if parsed.path == "/api/v3/policy/snapshot":
+            ids = parse_qs(parsed.query).get("id") or POLICY_SNAPSHOT_IDS
+            try: return self.send_json(REGISTRY.snapshot(ids))
+            except Exception as exc: return self.send_json({"error": str(exc)}, 400)
+        return super().do_GET()
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        if not path.startswith("/api/v3/"):
+            return super().do_POST()
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 12_000_000:
+                return self.send_json({"error": "Core v3 request exceeds 12 MB"}, 413)
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            if not isinstance(payload, dict):
+                raise ValueError("JSON body must be an object")
+
+            if path == "/api/v3/tariff/calculate":
+                tariff = str(payload.get("tariff", "residential"))
+                result = TARIFFS.bill(tariff, float(payload.get("consumption_kwh", 0)), payload.get("subscribed_kva"))
+                body = _json_safe(result)
+                body["audit"] = _audit(payload, [_tariff_rule_id(tariff)])
+                return self.send_json(body)
+
+            if path == "/api/v3/net-metering/settle":
+                tariff = str(payload.get("tariff", "residential"))
+                imports = [float(x) for x in payload.get("imports_kwh", [])]
+                exports = [float(x) for x in payload.get("exports_kwh", [])]
+                if len(imports) != len(exports): raise ValueError("imports_kwh and exports_kwh must have equal length")
+                ledger = NetMeteringLedger(TARIFFS, tariff, subscribed_kva=payload.get("subscribed_kva"), rollover_months=int(payload.get("rollover_months", 12)))
+                rows = [ledger.settle(i, e) for i, e in zip(imports, exports)]
+                return self.send_json({
+                    "settlement": _json_safe(rows), "closing_credit_kwh": ledger.credit_balance_kwh,
+                    "cash_payout_bnd": 0.0, "policy_rule": "NM_CREDIT_SETTLEMENT",
+                    "audit": _audit(payload, ["NM_CREDIT_SETTLEMENT", _tariff_rule_id(tariff)]),
+                })
+
+            if path == "/api/v3/interval/parse":
+                report = _parse_interval_payload(payload)
+                return self.send_json({
+                    "inferred_interval_minutes": report.inferred_interval_minutes,
+                    "source_value_type": report.source_value_type, "valid_points": len(report.points),
+                    "duplicate_rows": report.duplicate_rows, "duplicate_policy": report.duplicate_policy,
+                    "skipped_rows": report.skipped_rows,
+                    "missing_intervals_estimate": report.missing_intervals_estimate,
+                    "irregular_gap_count": report.irregular_gap_count,
+                    "completeness_pct": report.completeness_pct,
+                    "annual_kwh_in_file": sum(x.kwh for x in report.points),
+                    "audit": _audit(payload),
+                })
+
+            if path == "/api/v3/building/hourly":
+                report = _parse_interval_payload(payload)
+                minimum_completeness = float(payload.get("minimum_completeness_pct", 95.0))
+                if not 0 <= minimum_completeness <= 100:
+                    raise ValueError("minimum_completeness_pct must be between 0 and 100")
+                allow_incomplete = bool(payload.get("allow_incomplete", False))
+                allow_irregular = bool(payload.get("allow_irregular_intervals", False))
+                if report.completeness_pct < minimum_completeness and not allow_incomplete:
+                    raise ValueError(
+                        f"Interval dataset completeness is {report.completeness_pct:.2f}%, below the required {minimum_completeness:.2f}%. "
+                        "Repair the dataset or explicitly set allow_incomplete=true for a provisional analysis."
+                    )
+                if report.irregular_gap_count and not allow_irregular:
+                    raise ValueError(
+                        f"Interval dataset contains {report.irregular_gap_count} irregular timestamp gap(s) that are not whole multiples of the inferred {report.inferred_interval_minutes:g}-minute interval. "
+                        "Repair the timestamps or explicitly set allow_irregular_intervals=true for a provisional analysis."
+                    )
+
+                capacity = float(payload["capacity_kwp"])
+                tariff = str(payload.get("tariff", "residential"))
+                category = str(payload.get("customer_category", tariff)).lower()
+                eligibility = validate_net_metering_eligibility(
+                    REGISTRY, capacity_kw=capacity,
+                    is_existing_des_customer=bool(payload.get("is_existing_des_customer", True)),
+                    has_outstanding_arrears=bool(payload.get("has_outstanding_arrears", False)),
+                    technology="Solar PV", customer_category=category,
+                    electricity_act_offence=bool(payload.get("electricity_act_offence", False)),
+                )
+                nm_requested = bool(payload.get("net_metering", True))
+                nm_applied = nm_requested and eligibility["eligible"]
+                profile = PVWATTS.profile(
+                    lat=float(payload.get("lat", 4.9031)), lon=float(payload.get("lon", 114.9398)),
+                    tilt=float(payload.get("tilt", 10)), azimuth=float(payload.get("azimuth", 180)),
+                    losses_pct=float(payload.get("losses_pct", 14)), hourly=True,
+                )
+                result = analyze_hourly_building(
+                    load_points=report.points, pv_profile=profile, capacity_kwp=capacity,
+                    tariff_engine=TARIFFS, tariff=tariff,
+                    subscribed_kva=payload.get("subscribed_kva"), net_metering=nm_applied,
+                )
+                warnings = []
+                if report.completeness_pct < minimum_completeness:
+                    warnings.append("Interval dataset is below the configured completeness threshold; analysis was explicitly allowed as provisional.")
+                if report.irregular_gap_count:
+                    warnings.append("Interval dataset contains irregular timestamp gaps; analysis was explicitly allowed as provisional.")
+                if report.skipped_rows:
+                    warnings.append(f"{report.skipped_rows} row(s) could not be parsed and were excluded.")
+                if nm_requested and not nm_applied:
+                    warnings.append("Net-metering was requested but not applied because current eligibility checks did not pass.")
+                rules = ["NM_CAPACITY_RANGE", "NM_CUSTOMER_ELIGIBILITY", _tariff_rule_id(tariff)]
+                if nm_requested: rules.append("NM_CREDIT_SETTLEMENT")
+                return self.send_json({
+                    "interval_report": {
+                        "interval_minutes": report.inferred_interval_minutes, "valid_points": len(report.points),
+                        "completeness_pct": report.completeness_pct, "missing_intervals_estimate": report.missing_intervals_estimate,
+                        "irregular_gap_count": report.irregular_gap_count,
+                        "duplicate_rows": report.duplicate_rows, "duplicate_policy": report.duplicate_policy,
+                        "skipped_rows": report.skipped_rows,
+                    },
+                    "pv_source": _pv_metadata(profile),
+                    "net_metering_requested": nm_requested, "net_metering_applied": nm_applied,
+                    "net_metering_eligibility": eligibility, "result": _json_safe(result),
+                    "warnings": warnings, "audit": _audit(payload, rules),
+                })
+
+            if path == "/api/v3/finance/project":
+                inputs = _finance_inputs(payload)
+                result = model_project_finance(inputs)
+                assessment = assess_bankability(
+                    inputs,
+                    readiness_scores=payload.get("readiness_scores"),
+                    offtaker_ceiling_bnd_per_kwh=payload.get("offtaker_ceiling_bnd_per_kwh"),
+                )
+                return self.send_json({
+                    "result": _json_safe(result),
+                    "bankability": _json_safe(assessment),
+                    "dscr_debt_capacity_bnd": debt_capacity_for_dscr(inputs),
+                    "model_boundary": "Annual cash-flow model with level debt service; DSRA and LLCR included. Construction drawdown, IDC, depreciation and sculpted debt are not yet modeled.",
+                    "audit": _audit(payload),
+                })
+
+            return self.send_json({"error": "Unknown Core v3 endpoint"}, 404)
+        except KeyError as exc:
+            return self.send_json({"error": f"Missing required field: {exc.args[0]}"}, 400)
+        except ValueError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        except Exception as exc:
+            print(f"[CORE V3] {type(exc).__name__}: {exc}")
+            return self.send_json({"error": f"Core v3 calculation failed: {exc}"}, 500)
+
+app.SolarPassportHandler = CoreV3Handler
+
+if __name__ == "__main__":
+    print(f"Solar Passport Core v3 {CORE_V3_VERSION}")
+    print(f"Policy registry: {REGISTRY.registry_version}")
+    print("Core v3 API available under /api/v3/*")
+    app.run()
